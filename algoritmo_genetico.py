@@ -1,5 +1,7 @@
+import argparse
 import os
 import random
+import time
 
 import matplotlib
 matplotlib.use("Agg")
@@ -77,6 +79,10 @@ def crear_poblacion(originales, tam_poblacion, longitud, rng):
             for _ in range(tam_poblacion)]
 
 
+def diversidad_poblacion(poblacion):
+    return len({tuple(individuo) for individuo in poblacion})
+
+
 def seleccion_ruleta(poblacion, fitnesses, rng):
     minimo = min(fitnesses)
     pesos = [f - minimo + 1 for f in fitnesses]
@@ -114,7 +120,7 @@ def mutacion_mover_gap(individuo, rng):
 
 
 def ag_base(originales, tam_poblacion=60, generaciones=250,
-            prob_mutacion=0.3, semilla=1):
+            prob_mutacion=0.3, semilla=1, callback=None):
     rng = random.Random(semilla)
     longitud = max(len(s) for s in originales) + 6
     poblacion = crear_poblacion(originales, tam_poblacion, longitud, rng)
@@ -122,6 +128,7 @@ def ag_base(originales, tam_poblacion=60, generaciones=250,
     mejor_global = None
     mejor_fit_global = float("-inf")
     for gen in range(generaciones):
+        inicio = time.perf_counter()
         fitnesses = [calcular_fitness(ind) for ind in poblacion]
         for ind in poblacion:
             if not validar_integridad(ind, originales):
@@ -141,6 +148,9 @@ def ag_base(originales, tam_poblacion=60, generaciones=250,
             if rng.random() < prob_mutacion:
                 hijo = mutacion_mover_gap(hijo, rng)
             nueva.append(hijo)
+        tiempo_ms = (time.perf_counter() - inicio) * 1000
+        if callback is not None:
+            callback(gen, poblacion, fitnesses, tiempo_ms)
         poblacion = nueva
     return mejor_global, historial
 
@@ -217,7 +227,8 @@ def mutacion_bloques(individuo, rng, longitud_maxima):
 
 
 def ag_mejorado(originales, tam_poblacion=60, generaciones=250,
-                prob_mutacion=0.3, semilla=1, num_elite=4, tam_torneo=3):
+                prob_mutacion=0.3, semilla=1, num_elite=4, tam_torneo=3,
+                callback=None):
     rng = random.Random(semilla)
     longitud_inicial = max(len(s) for s in originales) + 6
     longitud_maxima = 2 * longitud_inicial
@@ -227,6 +238,7 @@ def ag_mejorado(originales, tam_poblacion=60, generaciones=250,
     mejor_global = None
     mejor_fit_global = float("-inf")
     for gen in range(generaciones):
+        inicio = time.perf_counter()
         fitnesses = [calcular_fitness(ind) for ind in poblacion]
         for ind in poblacion:
             if not validar_integridad(ind, originales):
@@ -249,6 +261,9 @@ def ag_mejorado(originales, tam_poblacion=60, generaciones=250,
             if rng.random() < prob_mutacion:
                 hijo = mutacion_bloques(hijo, rng, longitud_maxima)
             nueva.append(hijo)
+        tiempo_ms = (time.perf_counter() - inicio) * 1000
+        if callback is not None:
+            callback(gen, poblacion, fitnesses, tiempo_ms)
         poblacion = nueva
     return mejor_global, historial
 
@@ -320,5 +335,193 @@ def comparar(semilla_datos=42, semilla_ag=1, tam_poblacion=40,
     return hist_base, hist_mej
 
 
+def ejecutar_benchmark(originales, n_corridas=30, tam_poblacion=40,
+                       generaciones=100):
+    resultado = {
+        "base": {"fitness": [], "tiempo": [], "diversidad": []},
+        "mejorado": {"fitness": [], "tiempo": [], "diversidad": []},
+    }
+    for semilla in range(n_corridas):
+        for nombre, ag in (("base", ag_base), ("mejorado", ag_mejorado)):
+            fits = []
+            tiempos = []
+            divs = []
+            def cb(gen, poblacion, fitnesses, tiempo_ms,
+                   _f=fits, _t=tiempos, _d=divs):
+                _f.append(max(fitnesses))
+                _t.append(tiempo_ms)
+                _d.append(diversidad_poblacion(poblacion))
+            ag(originales, tam_poblacion=tam_poblacion,
+               generaciones=generaciones, semilla=semilla, callback=cb)
+            resultado[nombre]["fitness"].append(fits)
+            resultado[nombre]["tiempo"].append(tiempos)
+            resultado[nombre]["diversidad"].append(divs)
+    return resultado
+
+
+def _promedio_y_std(matriz):
+    n_corridas = len(matriz)
+    n_cols = len(matriz[0])
+    promedio = []
+    std = []
+    for c in range(n_cols):
+        valores = [matriz[r][c] for r in range(n_corridas)]
+        media = sum(valores) / n_corridas
+        var = sum((v - media) ** 2 for v in valores) / n_corridas
+        promedio.append(media)
+        std.append(var ** 0.5)
+    return promedio, std
+
+
+def graficar_convergencia_promedio(datos, archivo):
+    plt.figure(figsize=(10, 6))
+    for clave, color in (("base", "#d62728"), ("mejorado", "#2ca02c")):
+        promedio, std = _promedio_y_std(datos[clave]["fitness"])
+        x = list(range(1, len(promedio) + 1))
+        plt.plot(x, promedio, label=f"AG {clave.capitalize()}", color=color)
+        banda_sup = [p + s for p, s in zip(promedio, std)]
+        banda_inf = [p - s for p, s in zip(promedio, std)]
+        plt.fill_between(x, banda_inf, banda_sup, alpha=0.2, color=color)
+    plt.xlabel("Generacion")
+    plt.ylabel("Mejor fitness (promedio de N corridas)")
+    plt.title("Convergencia: AG Base vs AG Mejorado (promedio +/- 1 std)")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(archivo, dpi=120, bbox_inches="tight")
+    plt.close()
+
+
+def graficar_tiempo(datos, archivo):
+    plt.figure(figsize=(10, 6))
+    for clave, color in (("base", "#d62728"), ("mejorado", "#2ca02c")):
+        promedio, _ = _promedio_y_std(datos[clave]["tiempo"])
+        x = list(range(1, len(promedio) + 1))
+        plt.plot(x, promedio, label=f"AG {clave.capitalize()}", color=color)
+    plt.xlabel("Generacion")
+    plt.ylabel("Tiempo por generacion (ms, promedio)")
+    plt.title("Costo computacional por generacion")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(archivo, dpi=120, bbox_inches="tight")
+    plt.close()
+
+
+def graficar_diversidad(datos, archivo):
+    plt.figure(figsize=(10, 6))
+    for clave, color in (("base", "#d62728"), ("mejorado", "#2ca02c")):
+        promedio, _ = _promedio_y_std(datos[clave]["diversidad"])
+        x = list(range(1, len(promedio) + 1))
+        plt.plot(x, promedio, label=f"AG {clave.capitalize()}", color=color)
+    plt.xlabel("Generacion")
+    plt.ylabel("Individuos unicos en la poblacion (promedio)")
+    plt.title("Diversidad de poblacion por generacion")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(archivo, dpi=120, bbox_inches="tight")
+    plt.close()
+
+
+def ejecutar_sensibilidad(originales, config, n_corridas=10,
+                          tam_poblacion=40, generaciones=100):
+    resultado = {}
+    for parametro, valores in config.items():
+        resultado[parametro] = {}
+        for valor in valores:
+            fitnesses_finales = []
+            for semilla in range(n_corridas):
+                kwargs = {
+                    "tam_poblacion": tam_poblacion,
+                    "generaciones": generaciones,
+                    "semilla": semilla,
+                }
+                kwargs[parametro] = valor
+                _, historial = ag_mejorado(originales, **kwargs)
+                fitnesses_finales.append(historial[-1])
+            media = sum(fitnesses_finales) / n_corridas
+            var = sum((f - media) ** 2 for f in fitnesses_finales) / n_corridas
+            resultado[parametro][valor] = {
+                "fitness_promedio": float(media),
+                "fitness_std": float(var ** 0.5),
+            }
+    return resultado
+
+
+def graficar_sensibilidad(resultado, archivo):
+    parametros = list(resultado.keys())
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    ejes = axes.flatten()
+    for i, parametro in enumerate(parametros[:4]):
+        ax = ejes[i]
+        valores = list(resultado[parametro].keys())
+        medias = [resultado[parametro][v]["fitness_promedio"] for v in valores]
+        stds = [resultado[parametro][v]["fitness_std"] for v in valores]
+        etiquetas = [str(v) for v in valores]
+        x = list(range(len(valores)))
+        ax.bar(x, medias, yerr=stds, capsize=4, color="#2ca02c", alpha=0.8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(etiquetas)
+        ax.set_xlabel(parametro)
+        ax.set_ylabel("Fitness final (promedio)")
+        ax.set_title(f"Sensibilidad: {parametro}")
+        ax.grid(True, alpha=0.3, axis="y")
+    for j in range(len(parametros), 4):
+        ejes[j].axis("off")
+    fig.suptitle("Estudio de sensibilidad de parametros (AG Mejorado)",
+                 fontsize=14)
+    fig.tight_layout()
+    fig.savefig(archivo, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+
+def parsear_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Algoritmo genetico para alineamiento de secuencias.")
+    grupo = parser.add_mutually_exclusive_group()
+    grupo.add_argument("--benchmark", action="store_true",
+                       help="Corre 30 repeticiones y genera graficos "
+                            "de convergencia, tiempo y diversidad.")
+    grupo.add_argument("--sensibilidad", action="store_true",
+                       help="Hace barrido de parametros y genera grafico "
+                            "de sensibilidad 2x2.")
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
-    comparar()
+    args = parsear_args()
+    if args.benchmark:
+        originales = generar_secuencias(42)
+        print(f"Ejecutando benchmark (N=30 corridas por algoritmo)...")
+        datos = ejecutar_benchmark(originales, n_corridas=30,
+                                   tam_poblacion=40, generaciones=100)
+        os.makedirs("docs/imagenes", exist_ok=True)
+        graficar_convergencia_promedio(
+            datos, "docs/imagenes/convergencia_promedio.png")
+        graficar_tiempo(datos, "docs/imagenes/tiempo_por_generacion.png")
+        graficar_diversidad(datos, "docs/imagenes/diversidad_poblacion.png")
+        for clave in ("base", "mejorado"):
+            fits_finales = [f[-1] for f in datos[clave]["fitness"]]
+            media = sum(fits_finales) / len(fits_finales)
+            var = sum((f - media) ** 2 for f in fits_finales) / len(fits_finales)
+            print(f"AG {clave}: fitness final {media:.2f} +/- {var ** 0.5:.2f}")
+        print("Graficos en docs/imagenes/")
+    elif args.sensibilidad:
+        originales = generar_secuencias(42)
+        config = {
+            "tam_poblacion": [10, 20, 40, 80, 160],
+            "generaciones": [25, 50, 100, 200, 400],
+            "prob_mutacion": [0.05, 0.1, 0.3, 0.5, 0.8],
+            "tam_torneo": [2, 3, 5, 7, 10],
+        }
+        print("Ejecutando estudio de sensibilidad...")
+        resultado = ejecutar_sensibilidad(originales, config, n_corridas=10)
+        os.makedirs("docs/imagenes", exist_ok=True)
+        graficar_sensibilidad(resultado,
+                              "docs/imagenes/sensibilidad_parametros.png")
+        for parametro, valores in resultado.items():
+            print(f"\n{parametro}:")
+            for valor, datos in valores.items():
+                print(f"  {valor}: fitness {datos['fitness_promedio']:.2f} "
+                      f"+/- {datos['fitness_std']:.2f}")
+        print("\nGrafico en docs/imagenes/sensibilidad_parametros.png")
+    else:
+        comparar()
