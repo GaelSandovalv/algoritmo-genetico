@@ -3,9 +3,6 @@
 Comparación empírica del AG Base vs AG Mejorado y estudio de sensibilidad
 de parámetros del AG Mejorado.
 
-Documento complementario de [`ANALISIS.md`](ANALISIS.md). Para el análisis
-del algoritmo y su complejidad ver [`ANALISIS_ALGORITMO.md`](ANALISIS_ALGORITMO.md);
-para diagramas UML ver [`DIAGRAMAS_UML.md`](DIAGRAMAS_UML.md).
 
 ## Metodología
 

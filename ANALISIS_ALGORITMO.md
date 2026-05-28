@@ -3,9 +3,6 @@
 Descripción del problema, análisis de complejidad teórica (Big O) y
 decisiones de diseño del algoritmo genético del proyecto.
 
-Documento complementario de [`ANALISIS.md`](ANALISIS.md), enfocado solo en
-el algoritmo. Para gráficos ver [`GRAFICOS_DESEMPENO.md`](GRAFICOS_DESEMPENO.md);
-para diagramas UML ver [`DIAGRAMAS_UML.md`](DIAGRAMAS_UML.md).
 
 ## 1. Problema
 
@@ -66,16 +63,3 @@ despreciable.
 `O(P · S · L)` — la población completa más una nueva generación en
 construcción.
 
-## 3. Decisiones de diseño
-
-- **Longitud constante por generación.** El AG Base fija `L = max(|sᵢ|) + 6`
-  desde el inicio. El AG Mejorado parte igual, pero permite crecer hasta
-  `2 · L_inicial` para que `insertar_bloque_gaps` tenga margen sin violar
-  integridad; la limpieza `eliminar_columnas_gaps` impide que el
-  alineamiento se infle indefinidamente.
-- **Función de fitness con penalización fuerte por gap-letra (`-2`).**
-  Castiga columnas mal alineadas más fuerte que las simples discrepancias
-  (`-1`), empujando al algoritmo a buscar columnas conservadas.
-- **Reproducibilidad.** Toda la aleatoriedad pasa por `random.Random(semilla)`,
-  permitiendo correr la misma semilla y obtener bit-a-bit la misma
-  trayectoria — base para los benchmarks repetibles del estudio empírico.

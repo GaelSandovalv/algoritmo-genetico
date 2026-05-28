@@ -3,10 +3,6 @@
 Cuatro diagramas UML del proyecto (en formato **Mermaid**, renderizado
 nativamente por GitHub al abrir este archivo en el navegador).
 
-Documento complementario de [`ANALISIS.md`](ANALISIS.md). Para el análisis
-del algoritmo ver [`ANALISIS_ALGORITMO.md`](ANALISIS_ALGORITMO.md); para
-los gráficos de desempeño ver [`GRAFICOS_DESEMPENO.md`](GRAFICOS_DESEMPENO.md).
-
 ## 1. Diagrama de actividad — Flujo del AG Mejorado
 
 Muestra el flujo de control de una corrida completa del AG Mejorado: la
@@ -110,12 +106,6 @@ flowchart LR
 ```
 
 ## 4. Diagrama de clases (conceptual)
-
-> **Nota:** Este diagrama representa una **abstracción conceptual del
-> dominio**, no la implementación real del código (que está escrita en
-> estilo funcional, sin clases). Sirve para discutir las entidades del
-> problema y sus relaciones tal como un diseño orientado a objetos las
-> organizaría.
 
 ```mermaid
 classDiagram
